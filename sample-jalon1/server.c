@@ -6,7 +6,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
+#include <err.h>
 #include "common.h"
 
 void echo_server(int sockfd) {
@@ -34,9 +34,9 @@ int handle_bind() {
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
-	if (getaddrinfo(NULL, SERV_PORT, &hints, &result) != 0) {
-		perror("getaddrinfo()");
-		exit(EXIT_FAILURE);
+	int err = 0;
+	if (0 != (err = getaddrinfo(NULL, SERV_PORT, &hints, &result))) {
+		errx(1, "%s", gai_strerror(err));
 	}
 	for (rp = result; rp != NULL; rp = rp->ai_next) {
 		sfd = socket(rp->ai_family, rp->ai_socktype,
