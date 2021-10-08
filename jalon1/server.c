@@ -12,35 +12,22 @@
 #include <assert.h>
 
 
-
-typedef struct Client_info Client_info;
-struct Client_info
-{
-	int client_id;
-	int client_fd; 
-    in_port_t sin_port;
-	char* local_address;
-    Client_info *suivant;
-	
-};
-
-typedef struct Client_ancien Client_ancien;
-struct Client_ancien
-{
-    Client_info *premier;
-};
-
 // inistialiser le pointeur vers la chaine
 Client_ancien *initialisation()
 {
     Client_ancien *Client_ancien = malloc(sizeof(*Client_ancien));
-
-    if (Client_ancien == NULL)
+	Client_info *Client_init = malloc(sizeof(*Client_init));
+    if (Client_ancien == NULL || Client_init == NULL)
     {
         exit(EXIT_FAILURE);
     }
 
-    Client_ancien->premier = NULL;
+	Client_init->client_id = 0;
+    Client_init->client_fd = 0;
+ 	Client_init->local_address = ""; 
+	Client_init->sin_port= 0;
+	Client_init->suivant = NULL;
+    Client_ancien->premier = Client_init;
 
     return Client_ancien;
 }
@@ -58,43 +45,53 @@ void insertion(Client_ancien *Client_ancien,int client_id,int client_fd,in_port_
     nouveau_client->client_fd = client_fd;
 	nouveau_client->local_address = local_address; 
 	nouveau_client->sin_port= sin_port;
-    nouveau_client->suivant = NULL;
     
     
 	// insertion du client dans la chaine
-    if (Client_ancien->premier != NULL) /* La chaine contient au moins un élément */
-    {
-        /* On se positionne à la fin de la chaine*/
-        Client_info *Actuel_client = Client_ancien->premier;
-        while (Actuel_client->suivant != NULL)
-        {
-            Actuel_client = Actuel_client->suivant;
-        }		
-        Actuel_client->suivant = nouveau_client;
-		printf("Connection succeeded and client[%i] info stored !\n Client used address %s:%hu \n",client_id, local_address, sin_port);
-		printf("client_fd = %d\n", client_fd);
-    }
-    else /* la chaine est vide */
-    {
+		nouveau_client->suivant = Client_ancien->premier;
         Client_ancien->premier = nouveau_client;
 		printf("Connection succeeded and client[%i] info stored !\n Client used address %s:%hu \n",client_id, local_address, sin_port);
 		printf("client_fd = %d\n", client_fd);
-    }
-	
+    
 }
 
-void supprimer(Client_ancien *Client_ancien)
+void supprimer(Client_ancien *Client_ancien, int Client_fd )
 {
     assert(Client_ancien);
-
-    /* On vérifie si la chaine n'est pas vide */
-    if (Client_ancien->premier != NULL)
-    {
-        Client_info *Client_info = Client_ancien->premier;
-        Client_ancien->premier = Client_info->suivant;
-        free(Client_info);
-    }
-
+	if ( Client_ancien->premier != NULL){
+		Client_info* Client_actuel= Client_ancien->premier;
+		while (Client_actuel->suivant != NULL)
+		{	
+			static int c = 0;
+			if (Client_actuel->client_fd == Client_fd && c == 0 && Client_actuel->suivant->suivant != NULL){ // si le 1er client de la liste a supprimé
+				Client_ancien->premier = Client_actuel->suivant;
+				free(Client_actuel);
+				printf("Client on socket %d Deleted from storage\n",Client_fd);
+				c++;
+				break;
+			}
+			else if (Client_actuel->suivant->client_fd == Client_fd){
+				Client_info *asupprimer = Client_actuel->suivant;
+				Client_actuel->suivant = Client_actuel->suivant->suivant;
+				free(asupprimer);
+				printf("Client on socket %d Deleted from storage\n",Client_fd);
+				break;
+			}
+			else if (Client_actuel->client_fd == Client_fd && Client_actuel->suivant->suivant == NULL){
+				Client_info *asupprimer = Client_actuel;
+				Client_info *asupprimer2 = Client_actuel->suivant;
+				free(asupprimer);
+				free(asupprimer2);
+				free (Client_ancien);
+				printf("Client on socket %d Deleted from storage\n",Client_fd);
+				printf("Storage is empty ! \n");
+				break;
+			}
+			Client_actuel->suivant = Client_actuel->suivant->suivant;
+		}
+		
+	}
+	
 }
 
 void write_int_size(int fd, void *ptr) {
@@ -196,6 +193,7 @@ int socket_listen_and_bind(char *port) {
 			if (-1 == listen(listen_fd, MSG_LEN)) {
 				perror("Listen");
 			}
+			freeaddrinfo(res);
 			return listen_fd;
 		}
 		tmp = tmp->ai_next;
@@ -253,7 +251,7 @@ void server(int listen_fd) {
 				int static c = 1;
 				insertion(Client_ancien,c++,client_fd, ntohs(sockptr->sin_port),inet_ntoa(client_address));
 				// store new file descriptor in available slot in the array of struct pollfd set .events to POLLIN
-				for (int j = i; j < nfds; j++) {
+				for (int j = 0; j < nfds; j++) {
 					if (pollfds[j].fd == -1) {
 						pollfds[j].fd = client_fd;
 						pollfds[j].events = POLLIN;
@@ -263,25 +261,33 @@ void server(int listen_fd) {
 
 				// Set .revents of listening socket back to default
 				pollfds[i].revents = 0;
-				// free the memory
 
 			} else if (pollfds[i].fd != listen_fd && pollfds[i].revents & POLLHUP) { // If a socket previously created to communicate with a client detects a disconnection from the client side
 				// display message on terminal
 				printf("[SERVER] : Client[%i] on socket %d has disconnected from server\n", i,pollfds[i].fd);
+				
+				// free memory
+				supprimer(Client_ancien,pollfds[i].fd);
 				// Close socket and set struct pollfd back to default
 				close(pollfds[i].fd);
 				pollfds[i].events = 0;
 				pollfds[i].revents = 0;
 			} else if (pollfds[i].fd != listen_fd && pollfds[i].revents & POLLIN) { // If a socket different from the listening socket is active
+				
+				//cleaning memory
+				char buff[MSG_LEN];
+				memset(buff, 0, MSG_LEN);
 				// read data from socket
 				int size = 0;
 				size = read_int_size(pollfds[i].fd);
-				char str[size];
-				read_from_socket(pollfds[i].fd, str, size);
+				read_from_socket(pollfds[i].fd, buff, size);
 
-				if (strcmp(str,"/quit\n") == 0) { // If a socket previously created to communicate with a client detects a disconnection from the client side
+				if (strcmp(buff,"/quit\n") == 0) { // If a socket previously created to communicate with a client detects a disconnection from the client side
 					// display message on terminal
 					printf("[SERVER] : Client[%i] on socket %d has disconnected from server\n", i,pollfds[i].fd);
+					
+					// free memory
+					supprimer(Client_ancien,pollfds[i].fd);
 					// Close socket and set struct pollfd back to default
 					close(pollfds[i].fd);
 					pollfds[i].fd = -1;
@@ -290,11 +296,11 @@ void server(int listen_fd) {
 					continue;
 				}
 				else {
-				printf("[SERVER]: Client[%i] on socket (%d) says \"%s\"\n", i,pollfds[i].fd, str);
+				printf("[SERVER]: Client[%i] on socket (%d) says \"%s\"\n", i,pollfds[i].fd, buff);
 
 				// send back data to client
 				write_int_size(pollfds[i].fd, (void *)&size);
-				write_in_socket(pollfds[i].fd, str, size);
+				write_in_socket(pollfds[i].fd, buff, size);
 				
 				// Set activity detected back to default
 				pollfds[i].revents = 0;
@@ -302,9 +308,7 @@ void server(int listen_fd) {
 			}
 		}
 	}
-	// free memory
-	supprimer(Client_ancien);
-	free(Client_ancien);
+
 }
 
 int main(int argc, char *argv[]) {

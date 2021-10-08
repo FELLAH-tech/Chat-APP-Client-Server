@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "utility": "c",
+        "msg_struct.h": "c",
+        "sstream": "c"
+    }
+}

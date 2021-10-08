@@ -102,6 +102,7 @@ int socket_and_connect(char *hostname, char *port) {
 				exit(EXIT_FAILURE);
 			}
 			printf("OK\n");
+			freeaddrinfo(res);
 			return sock_fd;
 		}
 		tmp = tmp->ai_next;
@@ -137,6 +138,11 @@ int main(int argc, char  *argv[]) {
 		write_int_size(sock_fd, (void *)&size);
 		write_in_socket(sock_fd,buff, size);
 		printf("Message sent!\n");
+		if (strcmp(buff,"/quit\n") == 0) { 
+			printf("Disconnected...\n");
+			close(sock_fd);
+			break;
+		}
 		// Cleaning memory
 		memset(buff, 0, MSG_LEN);
 		// recv data from server

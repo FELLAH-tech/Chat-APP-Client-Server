@@ -9,6 +9,7 @@ struct Client_info
 	int client_fd; 
     in_port_t sin_port;
 	char* local_address;
+    char* pseudo;
     Client_info *suivant;
 	
 };
