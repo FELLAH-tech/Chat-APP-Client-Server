@@ -8,9 +8,11 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <time.h>
 #include "common.h"
 #include <assert.h>
 #include "msg_struct.h"
+
 
 
 // inistialiser le pointeur de contrôl de la chaine
@@ -34,7 +36,7 @@ Client_ancien *initialisation()
     return Client_ancien;
 }
 
-void insertion(Client_ancien *Client_ancien,int client_id,int client_fd,in_port_t sin_port,char* local_address,char* pseudo) // une file de client
+void insertion(Client_ancien *Client_ancien,int client_id,int client_fd,in_port_t sin_port,char* local_address,char* pseudo,struct tm instant) // une file de client
 {
 	// création du nouveau client
     Client_info *nouveau_client = malloc(sizeof(*nouveau_client));
@@ -48,12 +50,13 @@ void insertion(Client_ancien *Client_ancien,int client_id,int client_fd,in_port_
 	nouveau_client->local_address = local_address; 
 	nouveau_client->pseudo = pseudo; 
 	nouveau_client->sin_port= sin_port;
+	nouveau_client->instant= instant;
     
     
 	// insertion du client dans la chaine
 		nouveau_client->suivant = Client_ancien->premier;
         Client_ancien->premier = nouveau_client;
-		printf("Connection succeeded and client[%i] info stored !\n Client used address %s:%hu \n",client_id, local_address, sin_port);
+		printf("Connection succeeded and client[%i] info stored !\n %s used address %s:%hu \n",client_id,Client_ancien->premier->pseudo, local_address, sin_port);
 		printf("client_fd = %d\n", client_fd);
     
 }
@@ -97,6 +100,19 @@ void supprimer(Client_ancien *Client_ancien, int Client_fd )
 	
 }
 
+void extract_data(int from,int to,char* buff,char*test){ // to extract data from command 
+	memset(test, 0, MSG_LEN);
+	for (int k = from;k < to;k++){
+		if (from == 0){
+			test[k] = buff[k];
+		}
+		else{
+			int j = k - from;
+			test[j] = buff[k];
+		}
+	}
+
+}
 // check if there is a same pseudo before
 int find_pseudo(Client_ancien *Client_ancien, char* pseudo )
 {
@@ -104,9 +120,12 @@ int find_pseudo(Client_ancien *Client_ancien, char* pseudo )
 
 	if ( Client_ancien->premier != NULL){
 		Client_info* Client_actuel= Client_ancien->premier;
-		while (Client_actuel != NULL)
+		while (Client_actuel->suivant != NULL)
 		{	
-			if ( strcmp(pseudo,Client_actuel->pseudo) == 0){
+			char test[MSG_LEN];
+			memset(test,0,MSG_LEN);
+			extract_data(0,strlen(pseudo)-1,pseudo,test); // delete the \n
+			if ( strcmp(test,Client_actuel->pseudo) == 0){
 				return 1;
 			}
 			Client_actuel = Client_actuel->suivant;
@@ -118,7 +137,28 @@ int find_pseudo(Client_ancien *Client_ancien, char* pseudo )
 }
 
 // show users online
-char* find_users(Client_ancien *Client_ancien,char*buff)
+char* echo_users(Client_ancien *Client_ancien,char*buff)
+{
+    assert(Client_ancien);
+	
+
+	if ( Client_ancien->premier != NULL){
+		Client_info* Client_actuel= Client_ancien->premier;
+		
+		while (Client_actuel->suivant != NULL)
+		{	
+			printf("user : %s\n",Client_actuel->pseudo);
+			buff = strcat(buff,"-");
+			buff = strcat(buff,Client_actuel->pseudo);
+			buff = strcat(buff,"\n");
+			Client_actuel = Client_actuel->suivant;
+		}
+	}
+	return buff;
+}
+
+// change pseudo
+int change_pseudo(Client_ancien *Client_ancien,char*buff,int client_fd)
 {
     assert(Client_ancien);
 
@@ -127,75 +167,82 @@ char* find_users(Client_ancien *Client_ancien,char*buff)
 		
 		while (Client_actuel->suivant != NULL)
 		{	
-			buff = strcat(buff,"-");
-			buff = strcat(buff,Client_actuel->pseudo);
-			buff = strcat(buff,"\n");
-			Client_actuel = Client_actuel->suivant->suivant;
+			if ( Client_actuel->client_fd == client_fd){
+				printf("Pseudo changed ! from : %s to %s\n",Client_actuel->pseudo,buff);
+				fflush(stdout);
+				strncpy(Client_actuel->pseudo,buff,strlen(buff));
+				return 0;
+			}
+			Client_actuel = Client_actuel->suivant;
 		}
-		return buff;
+		return 0;
 		
 	}
-	return buff;
+	return 0;
 	
 }
-void write_int_size(int fd, void *ptr) {
-	int ret = 0, offset = 0;
-	while (offset != sizeof(int)) {
-		ret = write(fd, ptr + offset, sizeof(int) - offset);
-		if (-1 == ret)
-			perror("Writing size");
-		offset += ret;
+
+// user info
+char* user_info(Client_ancien *Client_ancien,char*buff)
+{
+    assert(Client_ancien);
+
+	if ( Client_ancien->premier != NULL){
+		Client_info* Client_actuel= Client_ancien->premier;
+		
+		while (Client_actuel->suivant != NULL)
+		{	
+			char test[MSG_LEN];
+			memset(test,0,MSG_LEN);
+			extract_data(0,strlen(buff)-1,buff,test); // delete the \n
+			if ( strcmp(test,Client_actuel->pseudo) == 0){
+				char text[20];
+				memset(text,0,20);
+
+				char test2[MSG_LEN];
+				memset(test2,0,MSG_LEN);
+
+				for (int j = 0;j < strlen(buff)-1;j++){ // to extract the pseudo and verify
+					test2[j] = buff[j];
+				}
+				memset(buff,0,MSG_LEN);
+				buff = strcat(test2," connected since : ");
+				
+				sprintf(text, "%d", Client_actuel->instant.tm_year+1900);
+				buff = strcat(buff,text);
+				buff = strcat(buff,"/");
+				memset(text,0,20);
+				sprintf(text, "%d", Client_actuel->instant.tm_mon+1);
+				buff = strcat(buff,text);
+				buff = strcat(buff,"/");
+				memset(text,0,20);
+				sprintf(text, "%d", Client_actuel->instant.tm_mday);
+				buff = strcat(buff,text);
+				buff = strcat(buff,"@");
+				memset(text,0,20);
+				sprintf(text, "%d", Client_actuel->instant.tm_hour);
+				buff = strcat(buff,text);
+				buff = strcat(buff,":");
+				memset(text,0,20);
+				sprintf(text, "%d", Client_actuel->instant.tm_min);
+				buff = strcat(buff,text);
+				buff = strcat(buff," with IP address : ");
+				buff = strcat(buff,Client_actuel->local_address);
+				buff = strcat(buff," and port number : ");
+				memset(text,0,20);
+				sprintf(text, "%hu", Client_actuel->sin_port);
+				buff = strcat(buff,text);
+				return buff;
+			}
+			Client_actuel = Client_actuel->suivant;
+		}
+		return "No User with this pseudo try again :)";
+		
 	}
+	return "No User with this pseudo try again :)";
+	
 }
 
-int read_int_size(int fd) {
-	int read_value = 0;
-	int ret = 0, offset = 0;
-	while (offset != sizeof(int)) {
-		ret = read(fd, (void *)&read_value + offset, sizeof(int) - offset);
-		if (-1 == ret)
-			perror("Reading size");
-		if (0 == ret) {
-			printf("Should close connection, read 0 bytes\n");
-			close(fd);
-			return -1;
-		}
-		offset += ret;
-	}
-	return read_value;
-}
-
-int read_from_socket(int fd, void *buf, int size) {
-	int ret = 0;
-	int offset = 0;
-	while (offset != size) {
-		ret = read(fd, buf + offset, size - offset);
-		if (-1 == ret) {
-			perror("Reading from client socket");
-			exit(EXIT_FAILURE);
-		}
-		if (0 == ret) {
-			printf("Should close connection, read 0 bytes\n");
-			close(fd);
-			return -1;
-			break;
-		}
-		offset += ret;
-	}
-	return offset;
-}
-
-int write_in_socket(int fd, void *buf, int size) {
-	int ret = 0, offset = 0;
-	while (offset != size) {
-		if (-1 == (ret = write(fd, buf + offset, size - offset))) {
-			perror("Writing from client socket");
-			return -1;
-		}
-		offset += ret;
-	}
-	return offset;
-}
 
 int socket_listen_and_bind(char *port) {
 	int listen_fd = -1;
@@ -262,9 +309,7 @@ char * Echo_chek_pseudo(int pollfds,char*buff,struct message msgstruct,Client_an
 			memset(test2, 0, MSG_LEN);
 			memset(test, 0, MSG_LEN);
 			// test if the command /nick was inputed right
-			for (int k = 0;k < 6;k++){
-				test[k] = buff[k];
-			}
+			extract_data(0,6,buff,test);
 			
 			if (strcmp(test,"/nick ") != 0){
 				return "please login with /nick <your pseudo>";
@@ -368,13 +413,11 @@ int Echo_for_pseudo(int pollfds,char*buff,struct message msgstruct,struct messag
 						memset(test3, 0, MSG_LEN);
 						msgstruct.type = NICKNAME_NEW;
 						int taille = strlen(buff);
-						for (int i =6;i<taille;i++){
-							int k = i-6;
-							test3[k] = buff[i];
-						}
-						strncpy(msgstruct.nick_sender, "ok", 3);
-						strncpy(msgstr->infos, test3, strlen(test3));
-						printf("info = %s",msgstruct.infos);
+						extract_data(6,taille-1,buff,test3);
+						strncpy(msgstruct.nick_sender, "ok", 3); // to be detected in client code
+						memset(msgstr->infos, 0, 128);
+						strncpy(msgstr->infos, test3, strlen(test3));// show the pseudo in server terminal
+						printf("New pseudo : %s",msgstr->infos);
 						// Sending structure 
 						if (send(pollfds, &msgstruct, sizeof(msgstruct), 0) <= 0) {
 							return 0;
@@ -401,13 +444,95 @@ int Echo_for_pseudo(int pollfds,char*buff,struct message msgstruct,struct messag
 						
 	
 					}
-				}while ( buff[0] != 'o' && buff[1] != 'k');
+				}while ( buff[0] != 'o' && buff[1] != 'k'); // if we have the ok from the check function
                 return 0;
 			}
 
 
-int server(int listen_fd) {
+int brodcast_send(Client_ancien* Client_ancien,char *buff,struct message msgstruct){
 
+	assert(Client_ancien);
+
+	if ( Client_ancien->premier != NULL){
+		Client_info* Client_actuel= Client_ancien->premier;
+		
+		while (Client_actuel->suivant != NULL)
+		{	
+			if ( (strcmp(msgstruct.nick_sender,Client_actuel->pseudo)) != 0){ // to avoid receiving the message sent
+			// send back data to client
+				// Sending structure (ECHO)
+				char test2[MSG_LEN];
+				memset(test2,0,MSG_LEN);
+				msgstruct.pld_len = strlen(buff)-1;
+				extract_data(0,msgstruct.pld_len,buff,test2);// delete the \n
+				msgstruct.pld_len = strlen(buff)-1;
+				if (send(Client_actuel->client_fd, &msgstruct, sizeof(msgstruct), 0) <= 0) {
+					return 0;
+				}
+				// Sending message (ECHO)
+				if (send(Client_actuel->client_fd, test2, msgstruct.pld_len, 0) <= 0) {
+					return 0;
+				}
+			}
+			
+			Client_actuel = Client_actuel->suivant;
+		}
+		
+	}
+	return 0;
+}
+
+char* unicast_send(Client_ancien* Client_ancien,char *buff,struct message msgstruct){
+
+	assert(Client_ancien);
+
+	if ( Client_ancien->premier != NULL){
+		Client_info* Client_actuel= Client_ancien->premier;
+		
+		while (Client_actuel->suivant != NULL)
+		{	
+			if ( (strcmp(msgstruct.infos,Client_actuel->pseudo)) == 0){ 
+			// send back data to client
+				printf("pass la vers : %d\n",Client_actuel->client_fd);
+				msgstruct.type = UNICAST_SEND;
+				msgstruct.pld_len = strlen(buff)-1;
+				// Sending structure (UNICAST)
+				if (send(Client_actuel->client_fd, &msgstruct, sizeof(msgstruct), 0) <= 0) {
+					return "";
+				}
+				// Sending message (UNICAST)
+				if (send(Client_actuel->client_fd, buff, msgstruct.pld_len, 0) <= 0) {
+					return "";
+				}
+				return "Message Delivred !\n";
+			}
+			
+			Client_actuel = Client_actuel->suivant;
+		}
+		
+	}
+
+	return "User not found :/\n";
+}
+
+
+int main(int argc, char *argv[]) {
+
+	// Test argc
+	if (argc != 2) {
+		printf("Usage: ./server port_number\n");
+		exit(EXIT_FAILURE);
+	}
+
+	// Create listening socket
+	char *port = argv[1];
+	int listen_fd = -1;
+	if (-1 == (listen_fd = socket_listen_and_bind(port))) {
+		printf("Could not create, bind and listen properly\n");
+		return 1;
+	}
+	// Handle new connections and existing ones
+	
 	// Declare array of struct pollfd
 	int nfds = 10;
 	struct pollfd pollfds[nfds];
@@ -435,8 +560,9 @@ int server(int listen_fd) {
 			perror("Poll");
 		}
 		printf("[SERVER] : %d active socket\n", n_active);
-	
-	
+
+		struct message* msgstr = malloc(sizeof(*msgstr)); // pour stocker le pseudo ( problème de variable local)
+
 		// Iterate on the array of monitored struct pollfd
 		for (int i = 0; i < nfds; i++) {
 
@@ -453,15 +579,19 @@ int server(int listen_fd) {
 			// display client connection information
 				struct sockaddr_in *sockptr = (struct sockaddr_in *)(&client_addr);
 				struct in_addr client_address = sockptr->sin_addr;
-				struct message* msgstr = malloc(sizeof(*msgstr)); // pour stocker le pseudo
 
                 Echo_for_pseudo(client_fd,buff,msgstruct,msgstr,Client_ancien);
-                int static c = 1;
-				insertion(Client_ancien,c++,client_fd, ntohs(sockptr->sin_port),inet_ntoa(client_address),msgstr->infos);
-				free(msgstr);
+                
+				// connection time
+				time_t secondes;
+				struct tm instant;
+
+				time(&secondes);
+				instant=*localtime(&secondes);
 
 				
-					
+				insertion(Client_ancien,client_fd-3,client_fd, ntohs(sockptr->sin_port),inet_ntoa(client_address),msgstr->infos,instant);
+
 				// store new file descriptor in available slot in the array of struct pollfd set .events to POLLIN
 				for (int j = 0; j < nfds; j++) {
 					if (pollfds[j].fd == -1) {
@@ -499,8 +629,7 @@ int server(int listen_fd) {
                 if (recv(pollfds[i].fd , buff, msgstruct.pld_len, 0) <= 0) {
                     return 0;
                 }
-
-                printf("[SERVER]: pld_len: %i / nick_sender: %s / type: %s / infos: %s\n", msgstruct.pld_len, msgstruct.nick_sender, msg_type_str[msgstruct.type], msgstruct.infos);
+				printf("buffer : %s, taille : %d\n", buff,msgstruct.pld_len);
 				if (strcmp(buff,"/quit\n") == 0) { // If a socket previously created to communicate with a client detects a disconnection from the client side
 					// display message on terminal
 					printf("[SERVER] : Client[%i] on socket %d has disconnected from server\n", i,pollfds[i].fd);
@@ -516,49 +645,64 @@ int server(int listen_fd) {
 				}
 
 				else {
-				printf("[SERVER]: Client[%i] on socket (%d) says \"%s\"\n", i,pollfds[i].fd, buff);
+					printf("[SERVER]: Client[%i] on socket (%d) says \"%s\"\n", i,pollfds[i].fd, buff);
+					printf(" [SERVER]: pld_len: %i / nick_sender: %s / type: %s / infos: %s\n", msgstruct.pld_len, msgstruct.nick_sender, msg_type_str[msgstruct.type], msgstruct.infos);
+					char test2[MSG_LEN];// store changed pseudo
+					memset(test2, 0, MSG_LEN);
+					switch (msgstruct.type)
+					{
+					case NICKNAME_LIST :
+						memset(buff, 0, MSG_LEN);
+						strcpy(buff,echo_users(Client_ancien,buff));
+						msgstruct.pld_len = strlen(buff);
+						break;
+					case NICKNAME_NEW :
+						Echo_for_pseudo(pollfds[i].fd,buff,msgstruct,msgstr,Client_ancien);
+						memset(test2,0,MSG_LEN);
+						extract_data(6,msgstruct.pld_len,buff,test2);
+						change_pseudo(Client_ancien,test2,pollfds[i].fd);
+						break;	
+					case NICKNAME_INFOS :
+						memset(buff, 0, MSG_LEN);
+						strcpy(buff,user_info(Client_ancien,msgstruct.infos));
+						printf("buff apres:%s",buff);
+						msgstruct.pld_len = strlen(buff);
+						break;
+					case BROADCAST_SEND :
+						memset(test2,0,MSG_LEN);
+						extract_data(7,msgstruct.pld_len,buff,test2);
+						brodcast_send(Client_ancien,test2,msgstruct);
+						break;
+					case UNICAST_SEND :
+						memset(test2,0,MSG_LEN); // exctract msg
+						extract_data(0,strlen(buff),buff,test2);
+						printf("test to : %s\n",test2);
+						memset(buff, 0, MSG_LEN);
+						strcpy(buff,unicast_send(Client_ancien,test2,msgstruct));
+						msgstruct.pld_len = strlen(buff)-1;
+						break;
+					
+					default:
+						break;
+					}
 				
-				if (strcmp(buff,"/who\n") == 0){// to show client online users
-					memset(buff, 0, MSG_LEN);
-					strncpy(buff,find_users(Client_ancien,buff),MSG_LEN);
-					msgstruct.type = NICKNAME_LIST;
+					if (msgstruct.type != NICKNAME_NEW){
+					// send back data to client
+						// Sending structure (ECHO)
+						if (send(pollfds[i].fd, &msgstruct, sizeof(msgstruct), 0) <= 0) {
+							return 0;
+						}
+						// Sending message (ECHO)
+						if (send(pollfds[i].fd, buff, msgstruct.pld_len, 0) <= 0) {
+							return 0;
+						}
+					}
 				}
-			// send back data to client
-                // Sending structure (ECHO)
-                if (send(pollfds[i].fd, &msgstruct, sizeof(msgstruct), 0) <= 0) {
-                    return 0;
-                }
-                // Sending message (ECHO)
-                if (send(pollfds[i].fd, buff, msgstruct.pld_len, 0) <= 0) {
-                    return 0;;
-                }
 				// Set activity detected back to default
 				pollfds[i].revents = 0;
-				}
 			}
 		}
 	}
-    return 0;
-
-}
-
-int main(int argc, char *argv[]) {
-
-	// Test argc
-	if (argc != 2) {
-		printf("Usage: ./server port_number\n");
-		exit(EXIT_FAILURE);
-	}
-
-	// Create listening socket
-	char *port = argv[1];
-	int listen_fd = -1;
-	if (-1 == (listen_fd = socket_listen_and_bind(port))) {
-		printf("Could not create, bind and listen properly\n");
-		return 1;
-	}
-	// Handle new connections and existing ones
-	server(listen_fd);
 
 	return 0;
 }
