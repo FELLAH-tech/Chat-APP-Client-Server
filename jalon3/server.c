@@ -768,9 +768,7 @@ char * Echo_chek_pseudo(int pollfds,char*buff,struct message msgstruct,Client_an
 	}
 	return "ok";		     
 }
-void set_msgtructure_info(struct message *msgstruct,char* str){
-	strncpy(msgstruct->infos, str, strlen(str));
-}
+
 
 int Echo_for_pseudo(int pollfds,char*buff,struct message msgstruct,struct message* msgstr,Client_ancien* Client_ancien){
     // request for login
@@ -970,10 +968,11 @@ int main(int argc, char *argv[]) {
 		}
 		printf("[SERVER] : %d active socket\n", n_active);
 
-		struct message* msgstr = malloc(sizeof(*msgstr)); // pour stocker le pseudo ( problème de variable local)
 
 		// Iterate on the array of monitored struct pollfd
 		for (int i = 0; i < nfds; i++) {
+			struct message* msgstr = malloc(sizeof(*msgstr)); // pour stocker le pseudo ( problème de variable local)
+			memset(msgstr,0,sizeof(*msgstr));
 
 			// If listening socket is active => accept new incoming connection
 			if (pollfds[i].fd == listen_fd && pollfds[i].revents & POLLIN) {
@@ -1184,6 +1183,7 @@ int main(int argc, char *argv[]) {
 				// Set activity detected back to default
 				pollfds[i].revents = 0;
 			}
+			free(msgstr);
 		}
 	}
 

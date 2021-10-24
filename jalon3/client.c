@@ -273,6 +273,13 @@ int Echo_message(int sock_fd,char*buff,struct message msgstruct,struct message* 
 			}
     		return MULTICAST_JOIN;
 		}  
+		msgstruct.type = ECHO_SEND;
+		// send data to server
+			if (send(sock_fd, &msgstruct, sizeof(msgstruct), 0) <= 0) {
+				return ECHO_SEND;}
+			// Sending message 
+			if (send(sock_fd, buff, msgstruct.pld_len, 0) <= 0) {
+				return ECHO_SEND;}
 		printf("Message sent!\n");
         return ECHO_SEND;
 }

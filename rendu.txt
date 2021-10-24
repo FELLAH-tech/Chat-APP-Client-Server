@@ -1,0 +1,19 @@
+    Ce projet réseau est l’un des rares projets où j’ai investi beaucoup de temps afin de le réaliser 
+de bout en bout. Au début, c'était un peu difficile de comprendre et de s’orienter vers une structure 
+de code bien adaptée au cahier de charge, ce qui m’a toujours pris beaucoup de temps afin de structurer 
+mon code à chaque fois et à chaque jalon. Mais enfin de compte j’ai bien aimé investir mon temps sur 
+un domaine que j’apprécie autant surtout lorsque ça marche enfin :D.
+
+    Concernant l’organisation du projet, l’ensemble des fonctions utilisées se trouve dans les fichiers
+client.c et server.c du chaque jalon. Le projet est totalement réalisé, tous les jalons sont faits 
+et j’ai pu aussi résoudre le problème des frees sur valgrind sur l’ensemble des autres jalons ça marche 
+dans le cas où tous les clients ont quité le serveur (avec /quit) et puis sortir du programme du serveur par un 
+Ctrl+C. 
+    Pour l'envoi des fichiers j'ai prévu un fichier d'éssaie déja présent dans le répertoire Jalon 4
+"file.txt" et pour les recevoir chaque client aura un répertoire créer automatiquement à son nom et 
+contient à chauqe fois qu'ils reçoivent un fichier i il se crée donc un fichier dedans nommé 
+"file_receives_Ni.txt" avec i variable pour distingué entre les différents fichiers envoyés. un exemple 
+sera présent pour un client appelé hicham qui a reçu 2 fichiers "file.txt".
+
+    Concernant les commentaires c’est le Jalon 4 qui contient le complément des commentaires des autres jalons.
+Enfin, je tiens à vous remercier pour la qualité des projets que vous nous proposez, en attendant avec impatience le prochain projet sur ce domaine que j’apprécie bien.
